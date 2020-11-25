@@ -1,0 +1,40 @@
+FROM ubuntu:bionic AS builder
+
+ARG host="127.0.0.1"
+ARG port=22
+
+RUN apt-get update -qq  \
+ && apt-get upgrade -yq \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -yq    \
+      autoconf build-essential zlib1g-dev libssl-dev wget \
+      git python3-netaddr python3-netifaces nmap tshark   \
+      ettercap-text-only < /dev/null > /dev/null          \
+ && git clone https://github.com/timothybrush/ssh-mitm.git /root/ssh-mitm 
+
+WORKDIR /root/ssh-mitm
+
+COPY debug.sh .
+
+RUN ./debug.sh $host $port        \
+ && echo "quiet = on" > ~/.wgetrc \
+ && ./install.sh > /dev/null
+
+
+# Minimized container
+FROM ubuntu:bionic
+
+RUN apt-get update -qq  \
+ && apt-get upgrade -yq \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+       libssl1.0.0 < /dev/null > /dev/null 
+
+RUN useradd -ms /bin/bash ssh-mitm
+USER ssh-mitm
+WORKDIR /home/ssh-mitm
+
+COPY --from=builder /home/ssh-mitm .
+
+EXPOSE 2222/tcp
+
+CMD ["/home/ssh-mitm/bin/sshd_mitm", "-D", "-f", "/home/ssh-mitm/etc/sshd_config"]
+
